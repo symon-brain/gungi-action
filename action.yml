@@ -1,0 +1,102 @@
+name: 'Gungi AI Development'
+description: 'AI-driven development automation. Executes phasechains to implement, review, and deliver code changes.'
+author: 'Gungi'
+
+branding:
+  icon: 'cpu'
+  color: 'green'
+
+inputs:
+  github-token:
+    description: 'GitHub token for repository operations (checkout, branch creation, PR)'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    # 1. ベースブランチを決定
+    #    Issue本文に <!-- gungi:base-branch:BRANCH_NAME --> があればそのブランチを使用
+    #    なければリポジトリのデフォルトブランチ
+    - name: Detect base branch
+      id: detect-branch
+      shell: bash
+      run: |
+        DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+        ISSUE_BODY="${{ github.event.issue.body }}"
+
+        # Issue本文から gungi:base-branch 指定を検索
+        CUSTOM_BRANCH=$(echo "$ISSUE_BODY" | grep -oP '(?<=<!-- gungi:base-branch:)[^\s-].*?(?= -->|-->)' | head -1 || true)
+
+        if [ -n "$CUSTOM_BRANCH" ]; then
+          echo "base_branch=$CUSTOM_BRANCH" >> $GITHUB_OUTPUT
+          echo "::notice::Using custom base branch: $CUSTOM_BRANCH"
+        else
+          echo "base_branch=$DEFAULT_BRANCH" >> $GITHUB_OUTPUT
+          echo "::notice::Using default branch: $DEFAULT_BRANCH"
+        fi
+
+    # 2. ソースコードをチェックアウト
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ steps.detect-branch.outputs.base_branch }}
+        fetch-depth: 0
+        token: ${{ inputs.github-token }}
+        path: repo
+
+    # 3. 作業ブランチを作成
+    - name: Create working branch
+      id: create-branch
+      shell: bash
+      working-directory: repo
+      run: |
+        ISSUE_NUMBER="${{ github.event.issue.number }}"
+        ISSUE_TITLE="${{ github.event.issue.title }}"
+        BASE_BRANCH="${{ steps.detect-branch.outputs.base_branch }}"
+
+        # Issue titleからブランチ名用のslugを生成
+        SLUG=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//' | cut -c1-40)
+        BRANCH_NAME="gungi/issue-${ISSUE_NUMBER}-${SLUG}"
+
+        git config user.name "gungi[bot]"
+        git config user.email "gungi[bot]@users.noreply.github.com"
+
+        # ブランチが既に存在する場合はそのまま使用
+        if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
+          git checkout "$BRANCH_NAME"
+          echo "::notice::Using existing branch: $BRANCH_NAME"
+        else
+          git checkout -b "$BRANCH_NAME"
+          echo "::notice::Created new branch: $BRANCH_NAME"
+        fi
+
+        echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+        echo "base_branch=$BASE_BRANCH" >> $GITHUB_OUTPUT
+
+    # 4. Gungi Docker Runner を実行
+    - name: Run Gungi phasechain
+      uses: docker://ghcr.io/symon-brain/gungi-runner:latest
+      env:
+        # Gungi API
+        GUNGI_API_URL: https://api.gungi.dev
+
+        # GitHub Context
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_ISSUE_NUMBER: ${{ github.event.issue.number }}
+        GITHUB_INSTALLATION_ID: ${{ github.event.installation.id }}
+        GUNGI_WORKING_BRANCH: ${{ steps.create-branch.outputs.branch_name }}
+        GUNGI_BASE_BRANCH: ${{ steps.create-branch.outputs.base_branch }}
+        GUNGI_WORKSPACE: ${{ github.workspace }}
+
+    # 5. 結果サマリーを出力
+    - name: Output summary
+      if: always()
+      shell: bash
+      run: |
+        echo "## Gungi Execution Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Issue**: #${{ github.event.issue.number }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Base Branch**: ${{ steps.detect-branch.outputs.base_branch }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Working Branch**: ${{ steps.create-branch.outputs.branch_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
