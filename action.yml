@@ -24,6 +24,16 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    # 0. リポジトリを workspace/repo/ にチェックアウト
+    #    Docker Runner は /workspace/repo/ を作業ディレクトリとして使用し、
+    #    /workspace/.takt/ にログ・レポートを出力する（PRに含まれない）
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ inputs.github-token }}
+        path: repo
+
     # 1. Private Docker イメージの認証
     - name: Login to GHCR
       shell: bash
