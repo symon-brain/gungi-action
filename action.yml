@@ -16,6 +16,10 @@ inputs:
   ghcr-token:
     description: 'Token for pulling private Docker image from ghcr.io'
     required: true
+  gungi-api-url:
+    description: 'Gungi API URL'
+    required: false
+    default: 'https://api.gungi.dev'
 
 runs:
   using: 'composite'
@@ -38,7 +42,7 @@ runs:
         docker run --rm \
           -v "${{ github.workspace }}:/workspace" \
           -e EXECUTION_ID="${{ inputs.execution-id }}" \
-          -e GUNGI_API_URL="https://api.gungi.dev" \
+          -e GUNGI_API_URL="${{ inputs.gungi-api-url }}" \
           -e GUNGI_WORKSPACE=/workspace \
           -e GITHUB_TOKEN="${{ inputs.github-token }}" \
           -e GUNGI_PROVIDER=claude \
