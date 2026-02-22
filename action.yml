@@ -13,13 +13,9 @@ inputs:
   github-token:
     description: 'GitHub token for repository operations (checkout, branch creation, PR)'
     required: true
-  ghcr-token:
-    description: 'Token for pulling private Docker image from ghcr.io'
-    required: true
   gungi-api-url:
     description: 'Gungi API URL'
-    required: false
-    default: 'https://api.gungi.dev'
+    required: true
 
 runs:
   using: 'composite'
@@ -34,17 +30,36 @@ runs:
         token: ${{ inputs.github-token }}
         path: repo
 
-    # 1. Private Docker イメージの認証
+    # 1. Gungi API から GHCR トークンを取得
+    #    有効な execution_id + active な installation であればトークンが返る
+    - name: Get GHCR token from Gungi API
+      id: ghcr-auth
+      shell: bash
+      run: |
+        RESPONSE=$(curl -sf "${{ inputs.gungi-api-url }}/api/runner/ghcr-token?execution_id=${{ inputs.execution-id }}")
+        if [ $? -ne 0 ]; then
+          echo "::error::Failed to get GHCR token from Gungi API"
+          exit 1
+        fi
+        TOKEN=$(echo "$RESPONSE" | jq -r '.token')
+        if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+          echo "::error::GHCR token is empty"
+          exit 1
+        fi
+        echo "::add-mask::$TOKEN"
+        echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+    # 2. Private Docker イメージの認証
     - name: Login to GHCR
       shell: bash
-      run: echo "${{ inputs.ghcr-token }}" | docker login ghcr.io -u gungi --password-stdin
+      run: echo "${{ steps.ghcr-auth.outputs.token }}" | docker login ghcr.io -u gungi --password-stdin
 
-    # 2. Docker イメージを事前に取得
+    # 3. Docker イメージを事前に取得
     - name: Pull Gungi Runner
       shell: bash
       run: docker pull ghcr.io/symon-brain/gungi-runner:latest
 
-    # 3. Gungi Docker Runner を実行
+    # 4. Gungi Docker Runner を実行
     #    checkout・ブランチ作成はDocker Runner内部で実施（Config APIから情報取得）
     - name: Run Gungi phasechain
       shell: bash
@@ -58,7 +73,7 @@ runs:
           -e GUNGI_PROVIDER=claude \
           ghcr.io/symon-brain/gungi-runner:latest
 
-    # 4. 結果サマリーを出力
+    # 5. 結果サマリーを出力
     - name: Output summary
       if: always()
       shell: bash
