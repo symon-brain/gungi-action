@@ -1,0 +1,27 @@
+name: Gungi AI Development
+
+on:
+  workflow_dispatch:
+    inputs:
+      execution_id:
+        description: 'Gungi execution ID'
+        required: true
+        type: string
+
+jobs:
+  gungi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Run Gungi AI Development
+        uses: symon-brain/gungi-action@main
+        with:
+          execution-id: ${{ inputs.execution_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          gungi-api-url: https://secantly-kitchenless-mirian.ngrok-free.dev
