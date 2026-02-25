@@ -59,7 +59,13 @@ runs:
       shell: bash
       run: docker pull ghcr.io/symon-brain/gungi-runner:latest
 
-    # 4. Gungi Docker Runner を実行
+    # 4. Dockerイメージのdigestを取得（実行メタデータに保存用）
+    - name: Get image digest
+      id: digest
+      shell: bash
+      run: echo "value=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/symon-brain/gungi-runner:latest)" >> $GITHUB_OUTPUT
+
+    # 5. Gungi Docker Runner を実行
     #    checkout・ブランチ作成はDocker Runner内部で実施（Config APIから情報取得）
     - name: Run Gungi phasechain
       shell: bash
@@ -71,9 +77,10 @@ runs:
           -e GUNGI_WORKSPACE=/workspace \
           -e GITHUB_TOKEN="${{ inputs.github-token }}" \
           -e GUNGI_PROVIDER=claude \
+          -e GUNGI_IMAGE_DIGEST="${{ steps.digest.outputs.value }}" \
           ghcr.io/symon-brain/gungi-runner:latest
 
-    # 5. 結果サマリーを出力
+    # 6. 結果サマリーを出力
     - name: Output summary
       if: always()
       shell: bash
