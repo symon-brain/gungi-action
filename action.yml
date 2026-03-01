@@ -20,9 +20,6 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    # 0. リポジトリを workspace/repo/ にチェックアウト
-    #    Docker Runner は /workspace/repo/ を作業ディレクトリとして使用し、
-    #    /workspace/.takt/ にログ・レポートを出力する（PRに含まれない）
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
@@ -30,13 +27,11 @@ runs:
         token: ${{ inputs.github-token }}
         path: repo
 
-    # 1. Gungi API から GHCR トークンを取得
-    #    有効な auth_token + active な installation であればトークンが返る
     - name: Get GHCR token from Gungi API
       id: ghcr-auth
       shell: bash
       run: |
-        RESPONSE=$(curl -sf "${{ inputs.gungi-api-url }}/api/runner/ghcr-token?auth_token=${{ inputs.auth-token }}")
+        RESPONSE=$(curl -sf -H "ngrok-skip-browser-warning: true" "${{ inputs.gungi-api-url }}/api/runner/ghcr-token?auth_token=${{ inputs.auth-token }}")
         if [ $? -ne 0 ]; then
           echo "::error::Failed to get GHCR token from Gungi API"
           exit 1
@@ -49,24 +44,19 @@ runs:
         echo "::add-mask::$TOKEN"
         echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
-    # 2. Private Docker イメージの認証
     - name: Login to GHCR
       shell: bash
       run: echo "${{ steps.ghcr-auth.outputs.token }}" | docker login ghcr.io -u gungi --password-stdin
 
-    # 3. Docker イメージを事前に取得
     - name: Pull Gungi Runner
       shell: bash
       run: docker pull ghcr.io/symon-brain/gungi-runner:latest
 
-    # 4. Dockerイメージのdigestを取得（実行メタデータに保存用）
     - name: Get image digest
       id: digest
       shell: bash
       run: echo "value=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/symon-brain/gungi-runner:latest)" >> $GITHUB_OUTPUT
 
-    # 5. Gungi Docker Runner を実行
-    #    checkout・ブランチ作成はDocker Runner内部で実施（Config APIから情報取得）
     - name: Run Gungi phasechain
       shell: bash
       run: |
@@ -80,7 +70,6 @@ runs:
           -e GUNGI_IMAGE_DIGEST="${{ steps.digest.outputs.value }}" \
           ghcr.io/symon-brain/gungi-runner:latest
 
-    # 6. 結果サマリーを出力
     - name: Output summary
       if: always()
       shell: bash
