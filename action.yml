@@ -7,8 +7,8 @@ branding:
   color: 'green'
 
 inputs:
-  execution-id:
-    description: 'Gungi execution ID (created by Gungi API on webhook)'
+  auth-token:
+    description: 'Gungi runner authentication token (created by Gungi API on webhook)'
     required: true
   github-token:
     description: 'GitHub token for repository operations (checkout, branch creation, PR)'
@@ -31,12 +31,12 @@ runs:
         path: repo
 
     # 1. Gungi API から GHCR トークンを取得
-    #    有効な execution_id + active な installation であればトークンが返る
+    #    有効な auth_token + active な installation であればトークンが返る
     - name: Get GHCR token from Gungi API
       id: ghcr-auth
       shell: bash
       run: |
-        RESPONSE=$(curl -sf "${{ inputs.gungi-api-url }}/api/runner/ghcr-token?execution_id=${{ inputs.execution-id }}")
+        RESPONSE=$(curl -sf "${{ inputs.gungi-api-url }}/api/runner/ghcr-token?auth_token=${{ inputs.auth-token }}")
         if [ $? -ne 0 ]; then
           echo "::error::Failed to get GHCR token from Gungi API"
           exit 1
@@ -72,7 +72,7 @@ runs:
       run: |
         docker run --rm \
           -v "${{ github.workspace }}:/workspace" \
-          -e EXECUTION_ID="${{ inputs.execution-id }}" \
+          -e AUTH_TOKEN="${{ inputs.auth-token }}" \
           -e GUNGI_API_URL="${{ inputs.gungi-api-url }}" \
           -e GUNGI_WORKSPACE=/workspace \
           -e GITHUB_TOKEN="${{ inputs.github-token }}" \
@@ -87,5 +87,5 @@ runs:
       run: |
         echo "## Gungi Execution Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "- **Execution ID**: ${{ inputs.execution-id }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Auth Token**: [masked]" >> $GITHUB_STEP_SUMMARY
         echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
