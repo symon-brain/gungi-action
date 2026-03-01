@@ -3,8 +3,8 @@ name: Gungi AI Development
 on:
   workflow_dispatch:
     inputs:
-      execution_id:
-        description: 'Gungi execution ID'
+      auth_token:
+        description: 'One-time authentication token'
         required: true
         type: string
 
@@ -22,6 +22,6 @@ jobs:
       - name: Run Gungi AI Development
         uses: symon-brain/gungi-action@main
         with:
-          execution-id: ${{ inputs.execution_id }}
+          auth-token: ${{ inputs.auth_token }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           gungi-api-url: REMOVED
