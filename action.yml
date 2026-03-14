@@ -37,7 +37,7 @@ runs:
 
     - name: Login to GHCR
       shell: bash
-      run: echo "${{ steps.ghcr.outputs.token }}" | docker login ghcr.io -u gungi --password-stdin
+      run: echo "${{ steps.ghcr.outputs.token }}" | docker login ghcr.io -u newta --password-stdin
 
     # 3. Docker イメージを取得
     - name: Pull Gungi Runner
