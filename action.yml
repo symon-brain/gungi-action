@@ -17,12 +17,20 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    # 1. Mask auth token to prevent exposure in logs
+    # 1. リポジトリをチェックアウト（Docker Runner内で /workspace/repo として使用）
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ inputs.github-token }}
+        path: repo
+
+    # 2. Mask auth token to prevent exposure in logs
     - name: Mask auth token
       shell: bash
       run: echo "::add-mask::${{ inputs.auth-token }}"
 
-    # 2. Private Docker イメージの認証（GHCR tokenをAPIから取得）
+    # 3. Private Docker イメージの認証（GHCR tokenをAPIから取得）
     - name: Get GHCR token
       id: ghcr
       shell: bash
@@ -39,25 +47,24 @@ runs:
       shell: bash
       run: echo "${{ steps.ghcr.outputs.token }}" | docker login ghcr.io -u newta --password-stdin
 
-    # 3. Docker イメージを取得
+    # 4. Docker イメージを取得
     - name: Pull Gungi Runner
       shell: bash
       run: docker pull ghcr.io/symon-brain/gungi-runner:latest
 
-    # 4. Dockerイメージのdigestを取得（実行メタデータに保存用）
+    # 5. Dockerイメージのdigestを取得（実行メタデータに保存用）
     - name: Get image digest
       id: digest
       shell: bash
       run: echo "value=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/symon-brain/gungi-runner:latest)" >> $GITHUB_OUTPUT
 
-    # 5. GitHub トークンをマスク（ログ露出防止）
+    # 6. GitHub トークンをマスク（ログ露出防止）
     - name: Mask sensitive tokens
       shell: bash
       run: |
         echo "::add-mask::${{ inputs.github-token }}"
 
-    # 6. Gungi Docker Runner を実行
-    #    checkout・ブランチ作成はDocker Runner内部で実施（Config APIから情報取得）
+    # 7. Gungi Docker Runner を実行
     - name: Run Gungi chain
       shell: bash
       run: |
@@ -82,7 +89,7 @@ runs:
           -e GITHUB_RUN_ID="${{ github.run_id }}" \
           ghcr.io/symon-brain/gungi-runner:latest
 
-    # 7. 結果サマリーを出力
+    # 8. 結果サマリーを出力
     - name: Output summary
       if: always()
       shell: bash
