@@ -71,7 +71,6 @@ runs:
 
         docker run --rm \
           --log-driver none \
-          --tmpfs /tmp/secrets:rw,noexec,nosuid,size=1m \
           -v "${{ github.workspace }}:/workspace" \
           -v /tmp/secrets:/tmp/secrets:ro \
           -e EXECUTION_AUTH_TOKEN="${{ inputs.auth-token }}" \
