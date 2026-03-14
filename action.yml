@@ -73,7 +73,7 @@ runs:
           --log-driver none \
           -v "${{ github.workspace }}:/workspace" \
           -v /tmp/secrets:/tmp/secrets:ro \
-          -e EXECUTION_AUTH_TOKEN="${{ inputs.auth-token }}" \
+          -e AUTH_TOKEN="${{ inputs.auth-token }}" \
           -e GUNGI_API_URL="https://api.gungi-ai.com" \
           -e GUNGI_WORKSPACE=/workspace \
           -e GITHUB_TOKEN_FILE=/tmp/secrets/github_token \
