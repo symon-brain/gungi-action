@@ -22,24 +22,41 @@ runs:
       shell: bash
       run: echo "::add-mask::${{ inputs.auth-token }}"
 
-    # 2. Docker イメージを取得（パブリックイメージのため認証不要）
+    # 2. Private Docker イメージの認証（GHCR tokenをAPIから取得）
+    - name: Get GHCR token
+      id: ghcr
+      shell: bash
+      run: |
+        GHCR_TOKEN=$(curl -s -f -X GET "https://api.gungi-ai.com/api/runner/ghcr-token?auth_token=${{ inputs.auth-token }}" | jq -r '.token')
+        if [ -z "$GHCR_TOKEN" ] || [ "$GHCR_TOKEN" = "null" ]; then
+          echo "Failed to retrieve GHCR token"
+          exit 1
+        fi
+        echo "::add-mask::$GHCR_TOKEN"
+        echo "token=$GHCR_TOKEN" >> $GITHUB_OUTPUT
+
+    - name: Login to GHCR
+      shell: bash
+      run: echo "${{ steps.ghcr.outputs.token }}" | docker login ghcr.io -u gungi --password-stdin
+
+    # 3. Docker イメージを取得
     - name: Pull Gungi Runner
       shell: bash
       run: docker pull ghcr.io/symon-brain/gungi-runner:latest
 
-    # 3. Dockerイメージのdigestを取得（実行メタデータに保存用）
+    # 4. Dockerイメージのdigestを取得（実行メタデータに保存用）
     - name: Get image digest
       id: digest
       shell: bash
       run: echo "value=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/symon-brain/gungi-runner:latest)" >> $GITHUB_OUTPUT
 
-    # 4. GitHub トークンをマスク（ログ露出防止）
+    # 5. GitHub トークンをマスク（ログ露出防止）
     - name: Mask sensitive tokens
       shell: bash
       run: |
         echo "::add-mask::${{ inputs.github-token }}"
 
-    # 5. Gungi Docker Runner を実行
+    # 6. Gungi Docker Runner を実行
     #    checkout・ブランチ作成はDocker Runner内部で実施（Config APIから情報取得）
     - name: Run Gungi chain
       shell: bash
@@ -66,7 +83,7 @@ runs:
           -e GITHUB_RUN_ID="${{ github.run_id }}" \
           ghcr.io/symon-brain/gungi-runner:latest
 
-    # 6. 結果サマリーを出力
+    # 7. 結果サマリーを出力
     - name: Output summary
       if: always()
       shell: bash
