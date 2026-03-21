@@ -1,0 +1,95 @@
+name: Gungi AI Development (Dev)
+
+on:
+  workflow_dispatch:
+    inputs:
+      auth_token:
+        description: 'One-time authentication token'
+        required: true
+        type: string
+
+env:
+  GUNGI_API_URL: https://secantly-kitchenless-mirian.ngrok-free.dev
+  RUNNER_IMAGE: ghcr.io/symon-brain/gungi-runner:dev
+
+jobs:
+  gungi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: repo
+
+      - name: Mask auth token
+        shell: bash
+        run: echo "::add-mask::${{ inputs.auth_token }}"
+
+      - name: Get GHCR token
+        id: ghcr
+        shell: bash
+        run: |
+          GHCR_TOKEN=$(curl -s -f -X GET "${{ env.GUNGI_API_URL }}/api/runner/ghcr-token" -H "Authorization: Bearer ${{ inputs.auth_token }}" | jq -r '.token')
+          if [ -z "$GHCR_TOKEN" ] || [ "$GHCR_TOKEN" = "null" ]; then
+            echo "Failed to retrieve GHCR token"
+            exit 1
+          fi
+          echo "::add-mask::$GHCR_TOKEN"
+          echo "token=$GHCR_TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Login to GHCR
+        shell: bash
+        run: echo "${{ steps.ghcr.outputs.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Pull Gungi Runner (dev)
+        shell: bash
+        run: docker pull ${{ env.RUNNER_IMAGE }}
+
+      - name: Get image digest
+        id: digest
+        shell: bash
+        run: echo "value=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.RUNNER_IMAGE }})" >> $GITHUB_OUTPUT
+
+      - name: Mask sensitive tokens
+        shell: bash
+        run: echo "::add-mask::${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Run Gungi chain
+        shell: bash
+        run: |
+          trap 'rm -f /tmp/secrets/github_token' EXIT
+
+          mkdir -p /tmp/secrets
+          echo "${{ secrets.GITHUB_TOKEN }}" > /tmp/secrets/github_token
+          chmod 600 /tmp/secrets/github_token
+
+          docker run --rm \
+            --log-driver none \
+            -v "${{ github.workspace }}:/workspace" \
+            -v /tmp/secrets:/tmp/secrets:ro \
+            -e AUTH_TOKEN="${{ inputs.auth_token }}" \
+            -e GUNGI_API_URL="${{ env.GUNGI_API_URL }}" \
+            -e GUNGI_WORKSPACE=/workspace \
+            -e GITHUB_TOKEN_FILE=/tmp/secrets/github_token \
+            -e GUNGI_PROVIDER=claude \
+            -e GUNGI_IMAGE_DIGEST="${{ steps.digest.outputs.value }}" \
+            -e GITHUB_RUN_ID="${{ github.run_id }}" \
+            ${{ env.RUNNER_IMAGE }}
+
+      - name: Output summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## Gungi Execution Summary (Dev)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **API URL**: ${{ env.GUNGI_API_URL }}" >> $GITHUB_STEP_SUMMARY
