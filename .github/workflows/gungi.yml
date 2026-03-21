@@ -1,0 +1,27 @@
+name: Gungi AI Development
+
+on:
+  workflow_dispatch:
+    inputs:
+      auth_token:
+        description: 'One-time authentication token'
+        required: true
+        type: string
+
+jobs:
+  gungi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Run Gungi AI Development
+        uses: symon-brain/symon/.github/actions/gungi-dev@main
+        with:
+          auth-token: ${{ inputs.auth_token }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          gungi-api-url: https://secantly-kitchenless-mirian.ngrok-free.dev
