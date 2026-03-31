@@ -35,7 +35,7 @@ runs:
       id: ghcr
       shell: bash
       run: |
-        GHCR_TOKEN=$(curl -s -f -X GET "https://api.gungi-ai.com/api/runner/ghcr-token?auth_token=${{ inputs.auth-token }}" | jq -r '.token')
+        GHCR_TOKEN=$(curl -s -f -X GET "https://api.gungi-ai.com/api/runner/ghcr-token" -H "Authorization: Bearer ${{ inputs.auth-token }}" | jq -r '.token')
         if [ -z "$GHCR_TOKEN" ] || [ "$GHCR_TOKEN" = "null" ]; then
           echo "Failed to retrieve GHCR token"
           exit 1
@@ -45,7 +45,7 @@ runs:
 
     - name: Login to GHCR
       shell: bash
-      run: echo "${{ steps.ghcr.outputs.token }}" | docker login ghcr.io -u newta --password-stdin
+      run: echo "${{ steps.ghcr.outputs.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
     # 4. Docker イメージを取得
     - name: Pull Gungi Runner
@@ -65,6 +65,8 @@ runs:
         echo "::add-mask::${{ inputs.github-token }}"
 
     # 7. Gungi Docker Runner を実行
+    # GUNGI_WORKSPACE=/workspace: checkout path: repo によりリポジトリは /workspace/repo に配置。
+    # GUNGI_WORKSPACEはその親ディレクトリを指す（.takt/ 等の出力先として使用）。
     - name: Run Gungi chain
       shell: bash
       run: |
