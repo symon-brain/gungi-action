@@ -114,7 +114,6 @@ runs:
           --remote-env "GUNGI_API_URL=https://api.gungi-ai.com" \\
           --remote-env "GUNGI_WORKSPACE=/workspaces" \\
           --remote-env "GITHUB_TOKEN_FILE=/tmp/secrets/github_token" \\
-          --remote-env "GUNGI_PROVIDER=claude" \\
           --remote-env "GUNGI_IMAGE_DIGEST=${{ steps.digest.outputs.value }}" \\
           --remote-env "GITHUB_RUN_ID=${{ github.run_id }}" \\
           node /opt/gungi/dist/docker/runner.js
@@ -142,7 +141,6 @@ runs:
           -e GUNGI_API_URL="https://api.gungi-ai.com" \
           -e GUNGI_WORKSPACE=/workspace \
           -e GITHUB_TOKEN_FILE=/tmp/secrets/github_token \
-          -e GUNGI_PROVIDER=claude \
           -e GUNGI_IMAGE_DIGEST="${{ steps.digest.outputs.value }}" \
           -e GITHUB_RUN_ID="${{ github.run_id }}" \
           ghcr.io/symon-brain/gungi-runner:latest
