@@ -64,59 +64,70 @@ runs:
       run: |
         echo "::add-mask::${{ inputs.github-token }}"
 
-    # 7a-7e. devcontainer対応ステップ（検出→ツール抽出→CLI導入→ビルド→実行）
-    - name: Check for devcontainer config
+    # 7a-7d. Gungi devcontainer ステップ（検出→CLI導入→ビルド→実行）
+    - name: Check for Gungi devcontainer config
       id: devcontainer-check
       shell: bash
       run: |
-        if [ -f "${{ github.workspace }}/repo/.devcontainer/devcontainer.json" ]; then
+        if [ -f "${{ github.workspace }}/repo/.gungi/devcontainer/devcontainer.json" ]; then
           echo "found=true" >> $GITHUB_OUTPUT
         else
           echo "found=false" >> $GITHUB_OUTPUT
         fi
 
-    - name: Extract Gungi tools
-      if: steps.devcontainer-check.outputs.found == 'true'
+    - name: Fail if Gungi devcontainer not found
+      if: steps.devcontainer-check.outputs.found != 'true'
       shell: bash
       run: |
-        docker rm -f gungi-init 2>/dev/null || true
-        docker create --name gungi-init ghcr.io/symon-brain/gungi-runner:latest
-        trap 'docker rm -f gungi-init 2>/dev/null || true' EXIT
-        docker cp gungi-init:/app /tmp/gungi-tools
-        docker rm gungi-init
-        trap - EXIT
+        echo "::error::.gungi/devcontainer/devcontainer.json が見つかりません。設定画面のインフラページでセットアップを完了してください。"
+        exit 1
 
     - name: Install devcontainer CLI
-      if: steps.devcontainer-check.outputs.found == 'true'
       shell: bash
       run: npm install -g @devcontainers/cli@0.85.0
 
-    - name: Build and start devcontainer
-      if: steps.devcontainer-check.outputs.found == 'true'
+    - name: Build and start Gungi devcontainer
       shell: bash
       run: |
-        mkdir -p /tmp/secrets
-        devcontainer up --workspace-folder "${{ github.workspace }}/repo" \\
-          --mount "type=bind,source=/tmp/gungi-tools,target=/opt/gungi,readonly" \\
-          --mount "type=bind,source=/tmp/secrets,target=/tmp/secrets,readonly"
+        devcontainer up --workspace-folder "${{ github.workspace }}/repo" \
+          --config "${{ github.workspace }}/repo/.gungi/devcontainer/devcontainer.json" \
+          --remove-existing-container
 
-    - name: Run Gungi chain (devcontainer mode)
-      if: steps.devcontainer-check.outputs.found == 'true'
+    - name: Configure devcontainer workspace
       shell: bash
       run: |
-        trap 'rm -f /tmp/secrets/github_token' EXIT
+        devcontainer exec --workspace-folder "${{ github.workspace }}/repo" \
+          --config "${{ github.workspace }}/repo/.gungi/devcontainer/devcontainer.json" \
+          bash -c "git config --global --add safe.directory /workspaces/repo"
 
-        echo "${{ inputs.github-token }}" > /tmp/secrets/github_token
-        chmod 600 /tmp/secrets/github_token
+    - name: Run Gungi chain
+      shell: bash
+      run: |
+        SECRETS_DIR="${{ github.workspace }}/repo/.gungi/secrets"
+        mkdir -p "$SECRETS_DIR"
+        grep -qxF '.gungi/secrets/' "${{ github.workspace }}/repo/.gitignore" 2>/dev/null || echo ".gungi/secrets/" >> "${{ github.workspace }}/repo/.gitignore"
+        trap "rm -rf $SECRETS_DIR" EXIT
 
-        devcontainer exec --workspace-folder "${{ github.workspace }}/repo" \\
-          --remote-env "AUTH_TOKEN=${{ inputs.auth-token }}" \\
-          --remote-env "GUNGI_API_URL=https://api.gungi-ai.com" \\
-          --remote-env "GUNGI_WORKSPACE=/workspaces" \\
-          --remote-env "GITHUB_TOKEN_FILE=/tmp/secrets/github_token" \\
-          --remote-env "GUNGI_IMAGE_DIGEST=${{ steps.digest.outputs.value }}" \\
-          --remote-env "GITHUB_RUN_ID=${{ github.run_id }}" \\
-          node /opt/gungi/dist/docker/runner.js
+        echo "${{ inputs.github-token }}" > "$SECRETS_DIR/github_token"
+        chmod 600 "$SECRETS_DIR/github_token"
+
+        devcontainer exec --workspace-folder "${{ github.workspace }}/repo" \
+          --config "${{ github.workspace }}/repo/.gungi/devcontainer/devcontainer.json" \
+          --remote-env "AUTH_TOKEN=${{ inputs.auth-token }}" \
+          --remote-env "GUNGI_API_URL=https://api.gungi-ai.com" \
+          --remote-env "GUNGI_WORKSPACE=/workspaces" \
+          --remote-env "GITHUB_TOKEN_FILE=/workspaces/repo/.gungi/secrets/github_token" \
+          --remote-env "GITHUB_RUN_ID=${{ github.run_id }}" \
+          node /app/dist/docker/runner.js
+
+    - name: Report workflow failure
+      if: failure()
+      shell: bash
+      run: |
+        curl -sf -X POST "https://api.gungi-ai.com/api/executions/workflow-failed" \
+          -H "Content-Type: application/json" \
+          -d "{\"auth_token\": \"${{ inputs.auth-token }}\", \"error\": \"Workflow failed (GitHub Actions run ${{ github.run_id }})\"}" \
+          || echo "Failed to report workflow failure (auth_token may have been consumed by runner)"
 
     # 7f. Gungi Docker Runner を実行（devcontainerなしのフォールバックモード）
     # GUNGI_WORKSPACE=/workspace: checkout path: repo によりリポジトリは /workspace/repo に配置。
@@ -125,18 +136,17 @@ runs:
       if: steps.devcontainer-check.outputs.found != 'true'
       shell: bash
       run: |
-        # Ensure cleanup happens even on failure
-        trap 'rm -f /tmp/secrets/github_token' EXIT
+        GUNGI_TMP="${{ github.workspace }}/.gungi-tmp"
+        trap "rm -f $GUNGI_TMP/secrets/github_token" EXIT
 
-        # Create tmpfs directory for secrets
-        mkdir -p /tmp/secrets
-        echo "${{ inputs.github-token }}" > /tmp/secrets/github_token
-        chmod 600 /tmp/secrets/github_token
+        mkdir -p "$GUNGI_TMP/secrets"
+        echo "${{ inputs.github-token }}" > "$GUNGI_TMP/secrets/github_token"
+        chmod 600 "$GUNGI_TMP/secrets/github_token"
 
         docker run --rm \
           --log-driver none \
           -v "${{ github.workspace }}:/workspace" \
-          -v /tmp/secrets:/tmp/secrets:ro \
+          -v "$GUNGI_TMP/secrets:/tmp/secrets:ro" \
           -e AUTH_TOKEN="${{ inputs.auth-token }}" \
           -e GUNGI_API_URL="https://api.gungi-ai.com" \
           -e GUNGI_WORKSPACE=/workspace \
@@ -149,7 +159,9 @@ runs:
     - name: Cleanup secrets
       if: always()
       shell: bash
-      run: find /tmp/secrets -type f -delete 2>/dev/null || true
+      run: |
+        find "${{ github.workspace }}/repo/.gungi/secrets" -type f -delete 2>/dev/null || true
+        find "${{ github.workspace }}/.gungi-tmp/secrets" -type f -delete 2>/dev/null || true
 
     # 8b. 結果サマリーを出力
     - name: Output summary
