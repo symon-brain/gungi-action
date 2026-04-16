@@ -13,6 +13,9 @@ inputs:
   github-token:
     description: 'GitHub token for repository operations (checkout, branch creation, PR)'
     required: true
+  resume-ref:
+    description: 'Checkpoint ref for resume (optional)'
+    required: false
 
 runs:
   using: 'composite'
@@ -115,6 +118,7 @@ runs:
           --config "${{ github.workspace }}/repo/.gungi/devcontainer/devcontainer.json" \
           --remote-env "AUTH_TOKEN=${{ inputs.auth-token }}" \
           --remote-env "GUNGI_API_URL=https://api.gungi-ai.com" \
+          --remote-env "RESUME_REF=${{ inputs.resume-ref }}" \
           --remote-env "GUNGI_WORKSPACE=/workspaces" \
           --remote-env "GITHUB_TOKEN_FILE=/workspaces/repo/.gungi/secrets/github_token" \
           --remote-env "GITHUB_RUN_ID=${{ github.run_id }}" \
@@ -149,6 +153,7 @@ runs:
           -v "$GUNGI_TMP/secrets:/tmp/secrets:ro" \
           -e AUTH_TOKEN="${{ inputs.auth-token }}" \
           -e GUNGI_API_URL="https://api.gungi-ai.com" \
+          -e RESUME_REF="${{ inputs.resume-ref }}" \
           -e GUNGI_WORKSPACE=/workspace \
           -e GITHUB_TOKEN_FILE=/tmp/secrets/github_token \
           -e GUNGI_IMAGE_DIGEST="${{ steps.digest.outputs.value }}" \
