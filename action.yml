@@ -106,21 +106,16 @@ runs:
     - name: Run Gungi chain
       shell: bash
       run: |
-        SECRETS_DIR="${{ github.workspace }}/repo/.gungi/secrets"
-        mkdir -p "$SECRETS_DIR"
-        grep -qxF '.gungi/secrets/' "${{ github.workspace }}/repo/.gitignore" 2>/dev/null || echo ".gungi/secrets/" >> "${{ github.workspace }}/repo/.gitignore"
-        trap "rm -rf $SECRETS_DIR" EXIT
-
-        echo "${{ inputs.github-token }}" > "$SECRETS_DIR/github_token"
-        chmod 600 "$SECRETS_DIR/github_token"
-
+        # GitHub token は env 経由で devcontainer に渡す。
+        # repo workspace 内にファイルを作らないことで、AI agent が .gitignore に
+        # .gungi/secrets/ を追加してしまうのを防ぐ（agent から secrets が見えない）。
         devcontainer exec --workspace-folder "${{ github.workspace }}/repo" \
           --config "${{ github.workspace }}/repo/.gungi/devcontainer/devcontainer.json" \
           --remote-env "AUTH_TOKEN=${{ inputs.auth-token }}" \
           --remote-env "GUNGI_API_URL=https://api.gungi-ai.com" \
           --remote-env "RESUME_REF=${{ inputs.resume-ref }}" \
           --remote-env "GUNGI_WORKSPACE=/workspaces" \
-          --remote-env "GITHUB_TOKEN_FILE=/workspaces/repo/.gungi/secrets/github_token" \
+          --remote-env "GITHUB_TOKEN=${{ inputs.github-token }}" \
           --remote-env "GITHUB_RUN_ID=${{ github.run_id }}" \
           node /app/dist/docker/runner.js
 
@@ -160,13 +155,11 @@ runs:
           -e GITHUB_RUN_ID="${{ github.run_id }}" \
           ghcr.io/symon-brain/gungi-runner:latest
 
-    # 8a. シークレットのクリーンアップ（常に実行）
+    # Docker direct mode 用 cleanup（.gungi-tmp/secrets のみ、devcontainer モードは env 経由なので不要）
     - name: Cleanup secrets
       if: always()
       shell: bash
-      run: |
-        find "${{ github.workspace }}/repo/.gungi/secrets" -type f -delete 2>/dev/null || true
-        find "${{ github.workspace }}/.gungi-tmp/secrets" -type f -delete 2>/dev/null || true
+      run: find "${{ github.workspace }}/.gungi-tmp/secrets" -type f -delete 2>/dev/null || true
 
     # 8b. 結果サマリーを出力
     - name: Output summary
