@@ -46,9 +46,25 @@ runs:
         echo "::add-mask::$GHCR_TOKEN"
         echo "token=$GHCR_TOKEN" >> $GITHUB_OUTPUT
 
+    # GHCR は偶発的にタイムアウトするため 3 回リトライ。失敗時は再実行を促すメッセージ。
     - name: Login to GHCR
       shell: bash
-      run: echo "${{ steps.ghcr.outputs.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      run: |
+        set +e  # docker login のリトライのために手動で exit 制御する
+        for attempt in 1 2 3; do
+          if echo "${{ steps.ghcr.outputs.token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin; then
+            exit 0
+          fi
+          if [ "$attempt" -lt 3 ]; then
+            echo "::warning::docker login ghcr.io が失敗しました (試行 $attempt/3)。10 秒後にリトライします..."
+            sleep 10
+          fi
+        done
+        echo "::error::GHCR (ghcr.io) へのログインに 3 回連続で失敗しました"
+        echo "::error::原因: GitHub Container Registry との一時的な疎通不良の可能性があります"
+        echo "::error::対処: 数分待ってから 'Re-run failed jobs' ボタンで workflow を再実行してください"
+        echo "::error::GitHub status: https://www.githubstatus.com/"
+        exit 1
 
     # 4. Docker イメージを取得
     - name: Pull Gungi Runner
